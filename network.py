@@ -1,6 +1,6 @@
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib import animation
 from util import get_n_nodes
 
 
@@ -55,8 +55,6 @@ class Network:
         self.floyd_warshall_dist = np.copy(self.dist_matrix)
         self.floyd_warshall_next = np.copy(self.dist_matrix)
         self.expected_flow = dict()
-        self.intesection_record = pd.DataFrame(columns=['vv', 'hh', 'vh', 'hv'])
-        self.intesection_record['node_index'] = np.arange(n_col * n_row)
 
     def gen_dist_matrix(self):
         for arc in self.arc_list:
@@ -82,7 +80,7 @@ class Network:
         self.floyd_warshall_next = next
         return dist, next
 
-    def find_netflow(self):
+    def find_netflow_shortest_path(self):
         # calculate the expected network flow
         flow_expectation = {(arc.node1, arc.node2): 0 for arc in self.arc_list}
         n_intersect, n_half_shelf, n_full_shelf, n_workstation = get_n_nodes(self.n_col, self.n_row)
@@ -135,10 +133,14 @@ class Network:
             u = v
         return flow_expectation
 
-
+    def rc_prototype(self, lp):
+        t_hat = 2*(lp+1)
+        if self.v_block_length%t_hat!=0 or self.h_block_length%t_hat!=0:
+            print('horizontal/vertical block size cannot be divided by t_hat!')
+            return 0.0
+        return t_hat
 class AGV:
-
-    def __init__(self, start, end, x0, y0, enter_time, index, max_v=1, size=1):
+    def __init__(self, start, end, x0, y0, enter_time, index, direction = (0,0), max_v=1, size=1):
         self.size = size
         self.index = index
         self.max_v = max_v
@@ -147,8 +149,12 @@ class AGV:
         self.enter_time = enter_time
         self.x = x0
         self.y = y0
-        self.next_node = -1
-        self.next_node_time = -1
+        self.direction = direction
+
+    def move(self):
+        self.x += self.direction[0]
+        self.y += self.direction[1]
+        return
 
     def plot_agv(self):
         plt.scatter(self.x, self.y, marker='s', linewidths=self.size)
@@ -156,9 +162,9 @@ class AGV:
                   self.x - self.size / 2]
         y_list = [self.y - self.size / 2, self.y + self.size / 2, self.x + self.size / 2, self.x - self.size / 2,
                   self.y - self.size / 2]
-        plt.plot(x_list, y_list)
-        plt.text(self.x, self.y, 'agv ' + str(self.index))
-
+        #plt.plot(x_list, y_list)
+        #plt.text(self.x, self.y, 'agv ' + str(self.index))
+        return x_list,y_list
 
 def create_network(n_col, n_row, v_block_length, h_block_length=3):
     """
@@ -266,14 +272,94 @@ def create_network(n_col, n_row, v_block_length, h_block_length=3):
     network = Network(node_list, arc_list, n_col, n_row, v_block_length, h_block_length)
     return network
 
+def agv_out_bd(network: Network, agv:AGV):
+    x_max = (network.n_col - 1) * network.h_block_length
+    y_max = (network.n_row - 1) * network.v_block_length
+    if agv.x<0 or agv.y<0 or agv.x>x_max or agv.y>y_max:
+        return True
+    else:
+        return False
 
-h_block_length = 3
-v_block_length = 6
+
+def validate_deterministic_rc(network: Network, t_hat: 0.0, lp: 1):
+    max_sim = 100
+    agv_dict = {}
+    start_dict = {}
+    agv_index = 0
+    X_record = []
+    Y_record = []
+    t_hat = int(t_hat)
+    for t in range(max_sim):
+        purge_agv_list = []
+        if t % t_hat == 0:
+            # release horizontal AGVs
+            for k in range(network.n_row // 2):
+                start1 = k * 2
+                end1 = k * 2 + (network.n_col - 1) * network.n_row
+                start2 = k * 2 + 1 + (network.n_col - 1) * network.n_row
+                end2 = k * 2 + 1
+                for j in range(lp):
+                    agv_dict[agv_index] = AGV(start1, end1, network.node_list[start1].x, network.node_list[start1].y,
+                                              enter_time=t+j, index=agv_index, direction=(1, 0))
+                    start_dict[agv_index] = j
+                    agv_index += 1
+                for j in range(lp):
+                    agv_dict[agv_index] = AGV(start2, end2, network.node_list[start2].x, network.node_list[start2].y,
+                                              enter_time=t+j, index=agv_index, direction=(-1, 0))
+                    start_dict[agv_index] = j
+                    agv_index += 1
+        if t/t_hat%1==0.5:
+            # release verticle AGVs
+            for k in range(network.n_col // 2):
+                start1 = k * 2 * network.n_row + network.n_row-1
+                end1 = k * 2 * network.n_row
+                start2 = (k * 2 + 1) * network.n_row
+                end2 = (k * 2 + 1) * network.n_row + network.n_row
+                for j in range(lp):
+                    agv_dict[agv_index] = AGV(start1, end1, network.node_list[start1].x, network.node_list[start1].y,
+                                              enter_time=t+j, index=agv_index, direction=(0, -1))
+                    start_dict[agv_index] = j
+                    agv_index += 1
+                for j in range(lp):
+                    agv_dict[agv_index] = AGV(start2, end2, network.node_list[start2].x, network.node_list[start2].y,
+                                              enter_time=t+j, index=agv_index, direction=(0, 1))
+                    start_dict[agv_index] = j
+                    agv_index += 1
+        for agv_ind, agv in agv_dict.items():
+            if start_dict[agv_ind]==0:
+                agv.move()
+            else:
+                start_dict[agv_ind]-=1
+            if agv_out_bd(network,agv):
+                purge_agv_list.append(agv_ind)
+        for agv_ind in purge_agv_list:
+            del agv_dict[agv_ind]
+        X_record.append([agv.x for agv_ind, agv in agv_dict.items()])
+        Y_record.append([agv.y for agv_ind, agv in agv_dict.items()])
+    return X_record, Y_record
+
+
+h_block_length = 6
+v_block_length = 12
 n_col = 4
 n_row = 4
-network1 = create_network(n_col, n_row, v_block_length, h_block_length=3)
+lp=2
+network1 = create_network(n_col, n_row, v_block_length, h_block_length)
 network1.floyd_warshall()
-agv0 = AGV(0, 1, 0, 0, 0, 0)
-agv0.plot_agv()
+network1.find_netflow_shortest_path()
+t_hat = network1.rc_prototype(lp)
+X_record, Y_record = validate_deterministic_rc(network1,t_hat,lp)
+x_max = (network1.n_col - 1) * network1.h_block_length
+y_max = (network1.n_row - 1) * network1.v_block_length
+fig = plt.figure()
+ax = fig.add_subplot(111,autoscale_on = False, xlim=(-1,x_max+1),ylim=(-1,y_max+1))
+agvs, = ax.plot([],[],'bo',ms=10)
+def init():
+    agvs.set_data([],[])
+    return agvs
+def animate(i):
+    agvs.set_data(X_record[i],Y_record[i])
+    return agvs
+anim = animation.FuncAnimation(fig,animate, init_func=init, frames=100, interval=10)
 
-network1.find_netflow()
+
