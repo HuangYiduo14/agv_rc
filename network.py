@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 from matplotlib import animation
-from util import get_n_nodes
+from util import get_n_nodes, get_node_lists
 
 
 class Node:
@@ -46,6 +47,12 @@ class Network:
     def __init__(self, node_list, arc_list, n_col, n_row, v_block_length, h_block_length):
         self.node_list = node_list
         self.arc_list = arc_list
+        intersect_list, half_shelf_list, full_shelf_list, workstaion_list = get_node_lists(n_col,n_row)
+        self.node_type_list ={}
+        self.node_type_list['intersect'] = np.array(intersect_list)
+        self.node_type_list['half shelf'] = np.array(half_shelf_list)
+        self.node_type_list['full shelf'] = np.array(full_shelf_list)
+        self.node_type_list['workstation'] = np.array(workstaion_list)
         self.n_row = n_row
         self.n_col = n_col
         self.v_block_length = v_block_length
@@ -55,6 +62,7 @@ class Network:
         self.floyd_warshall_dist = np.copy(self.dist_matrix)
         self.floyd_warshall_next = np.copy(self.dist_matrix)
         self.expected_flow = dict()
+
 
     def gen_dist_matrix(self):
         for arc in self.arc_list:
@@ -133,14 +141,32 @@ class Network:
             u = v
         return flow_expectation
 
+    def deterministic_shortest_path(self, o_node,d_node, time0 = 0, has_time=False):
+        path=[o_node]
+        time_list = [time0]
+        u = o_node
+        t = time0
+        while u!=d_node:
+            v = self.floyd_warshall_next[u,d_node]
+            t += self.dist_matrix[u,v]
+            u = v
+            path.append(u)
+            time_list.append(t)
+        if has_time:
+            return [path, time_list]
+        else:
+            return path
+
     def rc_prototype(self, lp):
-        t_hat = 2*(lp+1)
-        if self.v_block_length%t_hat!=0 or self.h_block_length%t_hat!=0:
+        t_hat = 2 * (lp + 1)
+        if self.v_block_length % t_hat != 0 or self.h_block_length % t_hat != 0:
             print('horizontal/vertical block size cannot be divided by t_hat!')
             return 0.0
         return t_hat
+
+
 class AGV:
-    def __init__(self, start, end, x0, y0, enter_time, index, direction = (0,0), max_v=1, size=1):
+    def __init__(self, start, end, x0, y0, enter_time, index, direction=(0, 0), max_v=1, size=1):
         self.size = size
         self.index = index
         self.max_v = max_v
@@ -150,6 +176,26 @@ class AGV:
         self.x = x0
         self.y = y0
         self.direction = direction
+        self.path = []
+
+    def rc_shortest_path_routing(self, network: Network, traj_table: pd.DataFrame):
+        # traj_table = pd.DataFrame(temp_list, columns=['time0','time1','node0','node1','agv_ind','occupied'])
+        temp_list = network.deterministic_shortest_path(self.start, self.end, time0=0, has_time=True)
+        self.path = temp_list[0]
+        optimal_travel_time = temp_list[1][-1]
+        t = self.enter_time
+        trip_v_agv = []
+        for i in range(len(self.path)-1):
+            n0 = self.path[i]
+            n1 = self.path[i+1]
+            print(n0,n1)
+            next_v_agv_trip = traj_table.loc[(traj_table['node0']==n0)&(traj_table['node1']==n1)&(traj_table['time0']>=t)&(traj_table['occupied']==0)].iloc[0]
+            traj_table.loc[next_v_agv_trip.name,'occupied']=1
+            t = next_v_agv_trip['time1']
+            trip_v_agv.append(int(next_v_agv_trip['agv_ind']))
+        travel_time = t - self.enter_time
+        delay = travel_time - optimal_travel_time
+        return trip_v_agv, travel_time, delay, traj_table
 
     def move(self):
         self.x += self.direction[0]
@@ -162,9 +208,10 @@ class AGV:
                   self.x - self.size / 2]
         y_list = [self.y - self.size / 2, self.y + self.size / 2, self.x + self.size / 2, self.x - self.size / 2,
                   self.y - self.size / 2]
-        #plt.plot(x_list, y_list)
-        #plt.text(self.x, self.y, 'agv ' + str(self.index))
-        return x_list,y_list
+        # plt.plot(x_list, y_list)
+        # plt.text(self.x, self.y, 'agv ' + str(self.index))
+        return x_list, y_list
+
 
 def create_network(n_col, n_row, v_block_length, h_block_length=3):
     """
@@ -272,94 +319,7 @@ def create_network(n_col, n_row, v_block_length, h_block_length=3):
     network = Network(node_list, arc_list, n_col, n_row, v_block_length, h_block_length)
     return network
 
-def agv_out_bd(network: Network, agv:AGV):
-    x_max = (network.n_col - 1) * network.h_block_length
-    y_max = (network.n_row - 1) * network.v_block_length
-    if agv.x<0 or agv.y<0 or agv.x>x_max or agv.y>y_max:
-        return True
-    else:
-        return False
 
 
-def validate_deterministic_rc(network: Network, t_hat: 0.0, lp: 1):
-    max_sim = 100
-    agv_dict = {}
-    start_dict = {}
-    agv_index = 0
-    X_record = []
-    Y_record = []
-    t_hat = int(t_hat)
-    for t in range(max_sim):
-        purge_agv_list = []
-        if t % t_hat == 0:
-            # release horizontal AGVs
-            for k in range(network.n_row // 2):
-                start1 = k * 2
-                end1 = k * 2 + (network.n_col - 1) * network.n_row
-                start2 = k * 2 + 1 + (network.n_col - 1) * network.n_row
-                end2 = k * 2 + 1
-                for j in range(lp):
-                    agv_dict[agv_index] = AGV(start1, end1, network.node_list[start1].x, network.node_list[start1].y,
-                                              enter_time=t+j, index=agv_index, direction=(1, 0))
-                    start_dict[agv_index] = j
-                    agv_index += 1
-                for j in range(lp):
-                    agv_dict[agv_index] = AGV(start2, end2, network.node_list[start2].x, network.node_list[start2].y,
-                                              enter_time=t+j, index=agv_index, direction=(-1, 0))
-                    start_dict[agv_index] = j
-                    agv_index += 1
-        if t/t_hat%1==0.5:
-            # release verticle AGVs
-            for k in range(network.n_col // 2):
-                start1 = k * 2 * network.n_row + network.n_row-1
-                end1 = k * 2 * network.n_row
-                start2 = (k * 2 + 1) * network.n_row
-                end2 = (k * 2 + 1) * network.n_row + network.n_row
-                for j in range(lp):
-                    agv_dict[agv_index] = AGV(start1, end1, network.node_list[start1].x, network.node_list[start1].y,
-                                              enter_time=t+j, index=agv_index, direction=(0, -1))
-                    start_dict[agv_index] = j
-                    agv_index += 1
-                for j in range(lp):
-                    agv_dict[agv_index] = AGV(start2, end2, network.node_list[start2].x, network.node_list[start2].y,
-                                              enter_time=t+j, index=agv_index, direction=(0, 1))
-                    start_dict[agv_index] = j
-                    agv_index += 1
-        for agv_ind, agv in agv_dict.items():
-            if start_dict[agv_ind]==0:
-                agv.move()
-            else:
-                start_dict[agv_ind]-=1
-            if agv_out_bd(network,agv):
-                purge_agv_list.append(agv_ind)
-        for agv_ind in purge_agv_list:
-            del agv_dict[agv_ind]
-        X_record.append([agv.x for agv_ind, agv in agv_dict.items()])
-        Y_record.append([agv.y for agv_ind, agv in agv_dict.items()])
-    return X_record, Y_record
-
-
-h_block_length = 6
-v_block_length = 12
-n_col = 4
-n_row = 4
-lp=2
-network1 = create_network(n_col, n_row, v_block_length, h_block_length)
-network1.floyd_warshall()
-network1.find_netflow_shortest_path()
-t_hat = network1.rc_prototype(lp)
-X_record, Y_record = validate_deterministic_rc(network1,t_hat,lp)
-x_max = (network1.n_col - 1) * network1.h_block_length
-y_max = (network1.n_row - 1) * network1.v_block_length
-fig = plt.figure()
-ax = fig.add_subplot(111,autoscale_on = False, xlim=(-1,x_max+1),ylim=(-1,y_max+1))
-agvs, = ax.plot([],[],'bo',ms=10)
-def init():
-    agvs.set_data([],[])
-    return agvs
-def animate(i):
-    agvs.set_data(X_record[i],Y_record[i])
-    return agvs
-anim = animation.FuncAnimation(fig,animate, init_func=init, frames=100, interval=10)
 
 
