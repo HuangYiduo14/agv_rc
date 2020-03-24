@@ -5,9 +5,9 @@ util.py: utilities
 
 Project update:
 
-3/23: animation for basic RC & basic RC
+3/23: animation for basic RC & basic RC + simulation
 
-3/24: k-shortest path and online routing
+3/24: k-shortest path and online routing + simulation
 
 3/25: stochastic models + simulation result
 

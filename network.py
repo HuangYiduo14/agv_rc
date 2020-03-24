@@ -28,11 +28,14 @@ class Node:
         return np.sqrt(dx ** 2. + dy ** 2.)
 
 
+
 class Arc:
     def __init__(self, node1, node2):
         self.node1 = node1.index
         self.node2 = node2.index
         self.length = Node.distance(node1, node2)
+        self.start_xy = [node1.x, node1.y]
+        self.end_xy = [node2.x, node2.y]
         self.x = (node2.x + node1.x) / 2.
         self.y = (node2.y + node1.y) / 2.
 
@@ -41,6 +44,15 @@ class Arc:
 
     def cost_func(self, flow):
         return 1. * flow ** 2
+
+    def interpolate_x(self, loc):
+        x = self.start_xy[0] + (self.end_xy[0]-self.start_xy[0])*loc/self.length
+        return x
+
+    def interpolate_y(self, loc):
+        y = self.start_xy[1] + (self.end_xy[1]-self.start_xy[1])*loc/self.length
+        return y
+
 
 
 class Network:
@@ -53,6 +65,7 @@ class Network:
         self.node_type_list['half shelf'] = np.array(half_shelf_list)
         self.node_type_list['full shelf'] = np.array(full_shelf_list)
         self.node_type_list['workstation'] = np.array(workstaion_list)
+        self.node_arc_dict = {(arc.node1, arc.node2): ind for ind, arc in enumerate(arc_list)}
         self.n_row = n_row
         self.n_col = n_col
         self.v_block_length = v_block_length
@@ -185,17 +198,21 @@ class AGV:
         optimal_travel_time = temp_list[1][-1]
         t = self.enter_time
         trip_v_agv = []
+        trip_record = []
         for i in range(len(self.path)-1):
             n0 = self.path[i]
             n1 = self.path[i+1]
-            print(n0,n1)
+            # print(n0,n1)
             next_v_agv_trip = traj_table.loc[(traj_table['node0']==n0)&(traj_table['node1']==n1)&(traj_table['time0']>=t)&(traj_table['occupied']==0)].iloc[0]
             traj_table.loc[next_v_agv_trip.name,'occupied']=1
+            t0 = t
+            t01 = next_v_agv_trip['time0']
             t = next_v_agv_trip['time1']
-            trip_v_agv.append(int(next_v_agv_trip['agv_ind']))
+            #trip_v_agv.append(int(next_v_agv_trip['agv_ind']))
+            trip_record.append([n0, n1, t0, t01, t])
         travel_time = t - self.enter_time
         delay = travel_time - optimal_travel_time
-        return trip_v_agv, travel_time, delay, traj_table
+        return trip_record, travel_time, delay, traj_table
 
     def move(self):
         self.x += self.direction[0]
