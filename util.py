@@ -1,4 +1,20 @@
 import numpy as np
+# network parameters
+h_block_length = 6
+v_block_length = 12
+n_col = 4
+n_row = 4
+lp = 2
+# simulation parameters
+p = 0.005  # intensity of flow
+n_t = 500 # simulation time
+alpha = 0.4  # relative demand from station to station
+
+def demand_transform(demand_list, type1: str, type2: str, network):
+    valid_agv = np.where(demand_list)
+    from_node_list = network.node_type_list[type1][valid_agv[0]]
+    to_node_list = network.node_type_list[type2][valid_agv[1]]
+    return from_node_list, to_node_list
 
 def get_n_nodes(n_col, n_row):
     n_intersect = n_col * n_row

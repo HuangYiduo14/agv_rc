@@ -1,9 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-from matplotlib import animation
-from util import get_n_nodes, get_node_lists
 
+from util import *
+
+from matplotlib import animation
+
+big_M = 99999
+crossing_time = {'straight':2, 'angle':2, 'source':1}
+AGV_length = 1
 
 class Node:
     def __init__(self, x, y, index, type, shelf_station_index=-1):
@@ -46,21 +51,20 @@ class Arc:
         return 1. * flow ** 2
 
     def interpolate_x(self, loc):
-        x = self.start_xy[0] + (self.end_xy[0]-self.start_xy[0])*loc/self.length
+        x = self.start_xy[0] + (self.end_xy[0] - self.start_xy[0]) * loc / self.length
         return x
 
     def interpolate_y(self, loc):
-        y = self.start_xy[1] + (self.end_xy[1]-self.start_xy[1])*loc/self.length
+        y = self.start_xy[1] + (self.end_xy[1] - self.start_xy[1]) * loc / self.length
         return y
-
 
 
 class Network:
     def __init__(self, node_list, arc_list, n_col, n_row, v_block_length, h_block_length):
         self.node_list = node_list
         self.arc_list = arc_list
-        intersect_list, half_shelf_list, full_shelf_list, workstaion_list = get_node_lists(n_col,n_row)
-        self.node_type_list ={}
+        intersect_list, half_shelf_list, full_shelf_list, workstaion_list = get_node_lists(n_col, n_row)
+        self.node_type_list = {}
         self.node_type_list['intersect'] = np.array(intersect_list)
         self.node_type_list['half shelf'] = np.array(half_shelf_list)
         self.node_type_list['full shelf'] = np.array(full_shelf_list)
@@ -70,12 +74,11 @@ class Network:
         self.n_col = n_col
         self.v_block_length = v_block_length
         self.h_block_length = h_block_length
-        self.dist_matrix = 99999 * np.ones((len(node_list), len(node_list)))
+        self.dist_matrix = big_M * np.ones((len(node_list), len(node_list)))
         self.gen_dist_matrix()
         self.floyd_warshall_dist = np.copy(self.dist_matrix)
         self.floyd_warshall_next = np.copy(self.dist_matrix)
         self.expected_flow = dict()
-
 
     def gen_dist_matrix(self):
         for arc in self.arc_list:
@@ -154,14 +157,14 @@ class Network:
             u = v
         return flow_expectation
 
-    def deterministic_shortest_path(self, o_node,d_node, time0 = 0, has_time=False):
-        path=[o_node]
+    def deterministic_shortest_path(self, o_node, d_node, time0=0, has_time=False):
+        path = [o_node]
         time_list = [time0]
         u = o_node
         t = time0
-        while u!=d_node:
-            v = self.floyd_warshall_next[u,d_node]
-            t += self.dist_matrix[u,v]
+        while u != d_node:
+            v = self.floyd_warshall_next[u, d_node]
+            t += self.dist_matrix[u, v]
             u = v
             path.append(u)
             time_list.append(t)
@@ -176,6 +179,103 @@ class Network:
             print('horizontal/vertical block size cannot be divided by t_hat!')
             return 0.0
         return t_hat
+
+class ReservedTimeWindow:
+    # tw_type in {first, last, mid}
+    def __init__(self, node_i, start_time, end_time, tw_index, tw_type='first', prev_tw= [-big_M,-big_M], next_tw = [-big_M,-big_M]):
+        self.node_i = node_i
+        self.start_time = start_time
+        self.end_time = end_time
+        self.tw_index = (node_i, tw_index) # index is like (node_i, p)
+        self.tw_type = tw_type
+        self.prev_tw = prev_tw
+        self.next_tw = next_tw
+
+
+
+
+class TimeNetwork(Network):
+    def __init__(self, network: Network, time_span = 1000, bidirect = True):
+        Network.__init__(network.node_list, network.arc_list, network.n_col, network.n_row, network.v_block_length,
+                         network.h_block_length)
+        # we use free time window here
+        self.free_time_window = [[[0,time_span]] for node in network.node_list]
+        # reserve time window
+        self.reserved_time_window = [[ReservedTimeWindow()] for node in network.node_list]
+        # update the distance matrix if the network is bidirectional
+        if bidirect:
+            valid_ind = np.where(self.dist_matrix < big_M//2)
+            self.dist_matrix[valid_ind[1], valid_ind[0]] = self.dist_matrix[valid_ind[0], valid_ind[1]]
+            self.arc_list += [Arc(self.node_list[arc.node2], self.node_list[arc.node1]) for arc in network.arc_list]
+            self.gen_dist_matrix()
+            self.node_arc_dict = {(arc.node1, arc.node2): ind for ind, arc in enumerate(self.arc_list)}
+
+    def time_calculate(self, node0, node1, label0, crossing_type, time_window0, time_window1):
+        # return tau, lambda, alpha
+        def reverse_test(n0, n1, tw0, tw1):
+            for tw in self.reserved_time_window[n0]:
+                if tw.start_time > tw0[1] and tw.prev_tw[0]== n1:
+                    if self.reserved_time_window[tw.prev_tw[0]][tw.prev_tw[1]].end_time< tw1[0]:
+                        return True
+            return False
+        arc_length = self.dist_matrix[node0, node1] - AGV_length
+        # check time feasibility
+        if label0 + crossing_time[crossing_type]> time_window0[1]:
+            return big_M, -big_M, big_M
+        alpha_ji = label0 + crossing_time[crossing_type] + arc_length
+        # reachable test
+        if node1 != node0:
+            tau_ji = max(time_window1[0], alpha_ji)
+            if arc_length > big_M//2:
+                return big_M, (-big_M,-big_M), big_M
+            # revese test
+            if reverse_test(node0, node1, time_window0, time_window1):
+                return big_M, (-big_M,-big_M), big_M
+            if reverse_test(node1, node0, time_window1, time_window0):
+                return big_M, (-big_M,-big_M), big_M
+            lambda_ji = (node0, node1)
+            return tau_ji, lambda_ji, alpha_ji
+        else:
+            tau_ji = time_window1[0]
+            available_j = np.where(self.dist_matrix[node0]<big_M//2)[0]
+            if available_j.shape[0]==0:
+                return big_M, (-big_M,-big_M), big_M
+            available_j = set(available_j)
+            for tw in self.reserved_time_window[node0]:
+                if tw.start_time > time_window0[1] and tw.end_time<time_window1[0]:
+                    n0 = tw.prev_tw[0]
+                    n1 = tw.next_tw[0]
+                    available_j = available_j- {n0,n1}
+            if len(available_j)==0:
+                return big_M, (-big_M,-big_M), big_M
+            lambda_ji = (node0, available_j[0])
+            return tau_ji, lambda_ji, alpha_ji
+
+
+    def time_window_routing(self, o, d, enter_time):
+        # initialize
+        label_list = [[big_M for f_tw in f_tw_node] for f_tw_node in self.free_time_window]
+        prev_tw_list = [[(-big_M, -big_M) for f_tw in f_tw_node] for f_tw_node in self.free_time_window]
+        prev_lane_list = [[(-big_M, -big_M) for f_tw in f_tw_node] for f_tw_node in self.free_time_window]
+        set_F = set()
+        dict_U = dict()
+        set_T = set()
+        for i in range(len(self.node_list)):
+            for j in range(len(self.free_time_window[i])):
+                set_F.add((i,j))
+
+        for f_tw_ind, f_tw in enumerate(self.free_time_window[o]):
+            if f_tw[0] <= enter_time and f_tw[1]>=enter_time:
+                label_list[o][f_tw_ind] = enter_time
+                prev_lane_list[o][f_tw_ind] = (o, o)
+                prev_tw_list[o][f_tw_ind] = (o, f_tw_ind)
+                set_U.add((o, f_tw_ind))
+                set_F -= set_T
+
+
+
+        return trip_record, travel_time, delay
+
 
 
 class AGV:
@@ -199,16 +299,18 @@ class AGV:
         t = self.enter_time
         trip_v_agv = []
         trip_record = []
-        for i in range(len(self.path)-1):
+        for i in range(len(self.path) - 1):
             n0 = self.path[i]
-            n1 = self.path[i+1]
+            n1 = self.path[i + 1]
             # print(n0,n1)
-            next_v_agv_trip = traj_table.loc[(traj_table['node0']==n0)&(traj_table['node1']==n1)&(traj_table['time0']>=t)&(traj_table['occupied']==0)].iloc[0]
-            traj_table.loc[next_v_agv_trip.name,'occupied']=1
+            next_v_agv_trip = traj_table.loc[
+                (traj_table['node0'] == n0) & (traj_table['node1'] == n1) & (traj_table['time0'] >= t) & (
+                            traj_table['occupied'] == 0)].iloc[0]
+            traj_table.loc[next_v_agv_trip.name, 'occupied'] = 1
             t0 = t
             t01 = next_v_agv_trip['time0']
             t = next_v_agv_trip['time1']
-            #trip_v_agv.append(int(next_v_agv_trip['agv_ind']))
+            # trip_v_agv.append(int(next_v_agv_trip['agv_ind']))
             trip_record.append([n0, n1, t0, t01, t])
         travel_time = t - self.enter_time
         delay = travel_time - optimal_travel_time
@@ -335,8 +437,3 @@ def create_network(n_col, n_row, v_block_length, h_block_length=3):
 
     network = Network(node_list, arc_list, n_col, n_row, v_block_length, h_block_length)
     return network
-
-
-
-
-

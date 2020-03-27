@@ -104,19 +104,10 @@ def validate_deterministic_rc(network: Network, t_hat: 0.0, lp: 1):
     return X_record, Y_record, dir_record
 
 
-def demand_transform(demand_list, type1: str, type2: str, network: Network):
-    valid_agv = np.where(demand_list)
-    from_node_list = network.node_type_list[type1][valid_agv[0]]
-    to_node_list = network.node_type_list[type2][valid_agv[1]]
-    return from_node_list, to_node_list
 
 
-# parameters
-h_block_length = 6
-v_block_length = 12
-n_col = 4
-n_row = 4
-lp = 2
+
+
 # create network and find all-point shortest path using Floyd Warshall
 network1 = create_network(n_col, n_row, v_block_length, h_block_length)
 network1.floyd_warshall()
@@ -135,9 +126,7 @@ traj_table = pd.DataFrame(temp_list, columns=['node0', 'node1', 'time0', 'time1'
 traj_table.sort_values('time0', inplace=True)
 # simulation experiment
 n_intersect, n_half_shelf, n_full_shelf, n_workstation = get_n_nodes(n_col, n_row)
-p = 0.005  # intensity of flow
-n_t = 500
-alpha = 0.4  # relative demand from station to station
+
 # hfs: half shelf, fs: full shelf, station: workstation
 print('start simulation:')
 print('generating random matrices...')
