@@ -1,14 +1,7 @@
-import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-
 from util import *
-
 from matplotlib import animation
-
-big_M = 99999
-crossing_time = {'straight':2, 'angle':2, 'source':1}
-AGV_length = 1
 
 class Node:
     def __init__(self, x, y, index, type, shelf_station_index=-1):
@@ -201,6 +194,7 @@ class TimeNetwork(Network):
         # we use free time window here
         self.free_time_window = [[[0,time_span]] for node in network.node_list]
         # reserve time window
+        we will change the next line
         self.reserved_time_window = [[ReservedTimeWindow()] for node in network.node_list]
         # update the distance matrix if the network is bidirectional
         if bidirect:
@@ -212,16 +206,20 @@ class TimeNetwork(Network):
 
     def time_calculate(self, node0, node1, label0, crossing_type, time_window0, time_window1):
         # return tau, lambda, alpha
+        # lambda is the next lane, tau is the new label, alpha is the earliest arrival time
+
         def reverse_test(n0, n1, tw0, tw1):
             for tw in self.reserved_time_window[n0]:
                 if tw.start_time > tw0[1] and tw.prev_tw[0]== n1:
                     if self.reserved_time_window[tw.prev_tw[0]][tw.prev_tw[1]].end_time< tw1[0]:
                         return True
             return False
-        arc_length = self.dist_matrix[node0, node1] - AGV_length
+
         # check time feasibility
         if label0 + crossing_time[crossing_type]> time_window0[1]:
             return big_M, -big_M, big_M
+
+        arc_length = self.dist_matrix[node0, node1] - AGV_length
         alpha_ji = label0 + crossing_time[crossing_type] + arc_length
         # reachable test
         if node1 != node0:
@@ -249,33 +247,74 @@ class TimeNetwork(Network):
             if len(available_j)==0:
                 return big_M, (-big_M,-big_M), big_M
             lambda_ji = (node0, available_j[0])
+
             return tau_ji, lambda_ji, alpha_ji
 
+    def update_tw(self, prev_tw_list, prev_lane_list, last_node):
 
-    def time_window_routing(self, o, d, enter_time):
-        # initialize
-        label_list = [[big_M for f_tw in f_tw_node] for f_tw_node in self.free_time_window]
-        prev_tw_list = [[(-big_M, -big_M) for f_tw in f_tw_node] for f_tw_node in self.free_time_window]
-        prev_lane_list = [[(-big_M, -big_M) for f_tw in f_tw_node] for f_tw_node in self.free_time_window]
-        set_F = set()
-        dict_U = dict()
-        set_T = set()
-        for i in range(len(self.node_list)):
-            for j in range(len(self.free_time_window[i])):
-                set_F.add((i,j))
-
-        for f_tw_ind, f_tw in enumerate(self.free_time_window[o]):
-            if f_tw[0] <= enter_time and f_tw[1]>=enter_time:
-                label_list[o][f_tw_ind] = enter_time
-                prev_lane_list[o][f_tw_ind] = (o, o)
-                prev_tw_list[o][f_tw_ind] = (o, f_tw_ind)
-                set_U.add((o, f_tw_ind))
-                set_F -= set_T
-
-
-
+        # t0: start time of this trip, t01: when agv start moving, t: when agv arrives
+        trip_record.append([n0, n1, t0, t01, t])
         return trip_record, travel_time, delay
 
+    def time_window_routing(self, o, d, enter_time):
+        # sort free time window
+        for node_ind in range(len(self.node_list)):
+            self.free_time_window[node_ind].sort(key = lambda x: x[0])
+
+        # Dijkstra's algorithm initialization the first node
+        # find an available time window for the first node
+        temp_f_tw_ind = -big_M
+        temp_f_tw_t1 = big_M
+        for f_tw_ind, f_tw in enumerate(self.free_time_window[o]):
+            if f_tw[1]>=enter_time + crossing_time['source']: # if the enter time is valid
+                temp_f_tw_ind = f_tw_ind
+                temp_f_tw_t1 = (f_tw[0], f_tw[1])
+                break
+        if temp_f_tw_t1 >= big_M: # if there is no time window possible, then reject this demand
+            return False, False, False
+            # initialize for the o node
+        actual_enter_time = max(enter_time, temp_f_tw_t1[0])
+        # initialize
+        prev_tw_list = [[(-big_M, -big_M) for f_tw in f_tw_node] for f_tw_node in
+                            self.free_time_window]  # (index_node, index_time_window)
+        prev_lane_list = [[(-big_M, -big_M) for f_tw in f_tw_node] for f_tw_node in self.free_time_window]
+        dist_list = [[big_M for f_tw in f_tw_node] for f_tw_node in self.free_time_window]
+        pq_q = PriorityQueue()
+        for node_ind, f_tw_node in enumerate(self.free_time_window):
+            for f_tw_ind, f_tw in enumerate(f_tw_node):
+                if f_tw[1] > actual_enter_time:
+                    pq_q.put((big_M, (node_ind, f_tw_ind)))
+        prev_lane_list[o][temp_f_tw_ind] = (o, o)
+        prev_tw_list[o][temp_f_tw_ind] = (o, temp_f_tw_ind)
+        dist_list[o][temp_f_tw_ind] = actual_enter_time
+        pq_q.change_priority((actual_enter_time, (o, temp_f_tw_ind)))
+        # apply Dijkstra algorithm
+        for loop in range(10000):
+            if pq_q.is_empty():
+                return False, False, False
+            label_u, u = pq_q.extract_min()
+            node_ind = u[0]
+            tw_ind = u[1]
+            tw0 = self.free_time_window[node_ind][tw_ind]
+            prev_lane = prev_lane_list[node_ind][tw_ind]
+            if prev_lane[0] == node_ind:
+                prev_node = prev_lane[1]
+            else:
+                prev_node = prev_lane[0]
+            if u[0]==d:
+                trip_record, travel_time, delay = self.update_tw(prev_tw_list, prev_lane_list, u)
+                return trip_record, travel_time, delay # return result
+            neighbor_u_node = np.where(self.dist_matrix[node_ind] < big_M//2)
+            for node_ind1 in neighbor_u_node:
+                for tw_ind1, tw1 in enumerate(self.free_time_window[node_ind]):
+                    crossing_type = net_crossing_type(prev_node, node_ind, node_ind1)
+                    tau_ji, lambda_ji, alpha_ji = self.time_calculate(node_ind, node_ind1, label_u, crossing_type, tw0,tw1)
+                    if tau_ji < dist_list[node_ind1][tw_ind1] and tau_ji<big_M:
+                        dist_list[node_ind1][tw_ind1] = tau_ji
+                        prev_lane_list[node_ind1][tw_ind1] = lambda_ji
+                        prev_tw_list[node_ind1][tw_ind1] = (node_ind, tw_ind)
+                        pq_q.change_priority((tau_ji,(node_ind1, tw_ind1)))
+        return False,False,False
 
 
 class AGV:

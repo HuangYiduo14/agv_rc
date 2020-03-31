@@ -1,4 +1,8 @@
 import numpy as np
+from heapq import heappush, heappop, heapify
+big_M = 99999
+crossing_time = {'straight':2, 'angle':2, 'source':1}
+AGV_length = 1
 # network parameters
 h_block_length = 6
 v_block_length = 12
@@ -30,3 +34,6 @@ def get_node_lists(n_col,n_row):
     full_shelf_list = list(range(n_intersect+n_half_shelf,n_intersect+n_half_shelf+n_full_shelf))
     workstaion_list = list(range(n_intersect+n_half_shelf+n_full_shelf,n_intersect+n_half_shelf+n_full_shelf+n_workstation))
     return intersect_list, half_shelf_list, full_shelf_list, workstaion_list
+
+def net_crossing_type(n0,n1,n2):
+    return 'straight'

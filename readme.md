@@ -9,12 +9,12 @@ Project update:
 
 3/25: discussion with Professor, time-window based model
 
-3/26: time-window based model (benchmark 1) (reachability test function)
+3/30: time-window based model (benchmark 1) (reachability test function)
 
-3/27: time-window based model (benchmark 1) (shortest path function)
+3/31: time-window based model (benchmark 1) (shortest path function)
 
-3/28: time-window heuristic (pooling)
+4/1: time-window heuristic (pooling)
 
-3/29: pooling problem literature
+4/2: pooling problem literature
 
-3/30: Task management problem literature
+4/3: Task management problem literature
