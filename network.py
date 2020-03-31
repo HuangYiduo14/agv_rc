@@ -1,7 +1,12 @@
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 from util import *
 from matplotlib import animation
+
+big_M = 99999
+crossing_time = {'straight':2, 'angle':2, 'source':1}
+AGV_length = 1
 
 class Node:
     def __init__(self, x, y, index, type, shelf_station_index=-1):
@@ -253,8 +258,9 @@ class TimeNetwork(Network):
     def update_tw(self, prev_tw_list, prev_lane_list, last_node):
 
         # t0: start time of this trip, t01: when agv start moving, t: when agv arrives
-        trip_record.append([n0, n1, t0, t01, t])
-        return trip_record, travel_time, delay
+        #trip_record.append([n0, n1, t0, t01, t])
+        #return trip_record, travel_time, delay
+        return
 
     def time_window_routing(self, o, d, enter_time):
         # sort free time window
@@ -279,20 +285,20 @@ class TimeNetwork(Network):
                             self.free_time_window]  # (index_node, index_time_window)
         prev_lane_list = [[(-big_M, -big_M) for f_tw in f_tw_node] for f_tw_node in self.free_time_window]
         dist_list = [[big_M for f_tw in f_tw_node] for f_tw_node in self.free_time_window]
-        pq_q = PriorityQueue()
+        pq_q = Heapdict()
         for node_ind, f_tw_node in enumerate(self.free_time_window):
             for f_tw_ind, f_tw in enumerate(f_tw_node):
                 if f_tw[1] > actual_enter_time:
-                    pq_q.put((big_M, (node_ind, f_tw_ind)))
+                    pq_q[(node_ind, f_tw_ind)] = big_M
         prev_lane_list[o][temp_f_tw_ind] = (o, o)
         prev_tw_list[o][temp_f_tw_ind] = (o, temp_f_tw_ind)
         dist_list[o][temp_f_tw_ind] = actual_enter_time
-        pq_q.change_priority((actual_enter_time, (o, temp_f_tw_ind)))
+        pq_q[(o, temp_f_tw_ind)]=actual_enter_time
         # apply Dijkstra algorithm
         for loop in range(10000):
-            if pq_q.is_empty():
+            if len(pq_q)==0:
                 return False, False, False
-            label_u, u = pq_q.extract_min()
+            u, label_u = pq_q.popitem()
             node_ind = u[0]
             tw_ind = u[1]
             tw0 = self.free_time_window[node_ind][tw_ind]
@@ -313,7 +319,7 @@ class TimeNetwork(Network):
                         dist_list[node_ind1][tw_ind1] = tau_ji
                         prev_lane_list[node_ind1][tw_ind1] = lambda_ji
                         prev_tw_list[node_ind1][tw_ind1] = (node_ind, tw_ind)
-                        pq_q.change_priority((tau_ji,(node_ind1, tw_ind1)))
+                        pq_q[(node_ind1, tw_ind1)]=tau_ji
         return False,False,False
 
 
