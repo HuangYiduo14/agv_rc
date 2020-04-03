@@ -77,9 +77,6 @@ class TimeNetwork(Network):
             return tau_ji, lambda_ji, alpha_ji
 
     def update_tw(self, prev_tw_list, prev_lane_list, dist_list, o: (1, 1), d: (1, 1), enter_time):
-        # t0: start time of this trip, t01: when agv start moving, t: when agv arrives
-        # trip_record.append([n0, n1, t0, t01, t])
-        # return trip_record, travel_time, delay
         # index of tw: (ind_node,ind_tw), e.g. o[0] is the node index of o, o[1] is the tw index of o
         # reconstruct the path
         u = d
@@ -125,7 +122,7 @@ class TimeNetwork(Network):
                 self.free_time_window[u[0]].insert(u[1], [old_ftw[0], start_time])
             elif old_ftw[1] - end_time > 1 and start_time - old_ftw[0] <= 1:
                 self.free_time_window[u[0]][u[1]] = [end_time, old_ftw[1]]
-            elif old_ftw[1] - end_time > 1 and start_time - old_ftw[0] <= 1:
+            elif old_ftw[1] - end_time <= 1 and start_time - old_ftw[0] > 1:
                 self.free_time_window[u[0]][u[1]] = [old_ftw[0], start_time]
             else:
                 self.free_time_window[u[0]].pop(u[1])

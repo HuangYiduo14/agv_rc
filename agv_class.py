@@ -1,7 +1,5 @@
-import matplotlib.pyplot as plt
 import pandas as pd
-from network import *
-
+from tw_network import *
 
 class AGV:
     def __init__(self, start, end, x0, y0, enter_time, index, direction=(0, 0), max_v=1, size=1):

@@ -108,7 +108,6 @@ def validate_deterministic_rc(network: Network, t_hat: 0.0, lp: 1):
 
     return X_record, Y_record, dir_record
 
-
 # create network and find all-point shortest path using Floyd Warshall
 network1 = create_network(n_col, n_row, v_block_length, h_block_length)
 network1.floyd_warshall()
@@ -125,6 +124,9 @@ for v_agv_ind, v_agv_traj in v_fleet_traj.items():
         temp_list.append([v_agv_traj[0][i], v_agv_traj[0][i + 1], v_agv_traj[1][i], v_agv_traj[1][i + 1], v_agv_ind, 0])
 traj_table = pd.DataFrame(temp_list, columns=['node0', 'node1', 'time0', 'time1', 'agv_ind', 'occupied'])
 traj_table.sort_values('time0', inplace=True)
+
+
+
 # simulation experiment
 n_intersect, n_half_shelf, n_full_shelf, n_workstation = get_n_nodes(n_col, n_row)
 
