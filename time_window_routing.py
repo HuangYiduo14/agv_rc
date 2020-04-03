@@ -1,12 +1,16 @@
-from network import *
-
+from tw_network import *
 # create network and find all-point shortest path using Floyd Warshall
 network1 = create_network(n_col, n_row, v_block_length, h_block_length)
 network1.floyd_warshall()
 network1.find_netflow_shortest_path()
 # initialize time-window network
+tw_network1 = TimeNetwork(network1)
+info, travel_time, delay = tw_network1.time_window_routing(22, 23, 1)
+info2, travel_time2, delay2 = tw_network1.time_window_routing(23, 22, 1)
 
 
+
+"""
 # simulation experiment
 n_intersect, n_half_shelf, n_full_shelf, n_workstation = get_n_nodes(n_col, n_row)
 
@@ -100,3 +104,4 @@ print('saving...')
 plt.rcParams['animation.ffmpeg_path'] = 'C:\\ffmpeg\\bin\\ffmpeg.exe'
 writer = animation.FFMpegWriter()
 anim.save('simulation_basic.mp4',writer=writer)
+"""

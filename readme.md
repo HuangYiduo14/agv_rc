@@ -13,8 +13,10 @@ Project update:
 
 3/31: time-window based model (benchmark 1) (shortest path function)
 
-4/1: time-window heuristic (pooling)
+4/2: time-window based model (shortest path function and other modifications)
 
-4/2: pooling problem literature
+4/3: time-window based model (debug)
 
-4/3: Task management problem literature
+4/4: pooling problem literature
+
+4/5: Task management problem literature

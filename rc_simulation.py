@@ -1,5 +1,10 @@
 from network import *
+from agv_class import *
+from matplotlib import animation
+import pandas as pd
+
 np.random.seed(10)
+
 
 def rc_fleet_info(network, t_hat, lp: 1):
     max_sim = 10000
@@ -104,10 +109,6 @@ def validate_deterministic_rc(network: Network, t_hat: 0.0, lp: 1):
     return X_record, Y_record, dir_record
 
 
-
-
-
-
 # create network and find all-point shortest path using Floyd Warshall
 network1 = create_network(n_col, n_row, v_block_length, h_block_length)
 network1.floyd_warshall()
@@ -177,12 +178,14 @@ for t in range(100, 100 + n_t):
     # print(all_trip)
     existing_agv_table = all_trip.loc[(all_trip['current_loc'] >= 0) & (all_trip['current_loc'] < 100)].copy()
     print(existing_agv_table)
-    if existing_agv_table.shape[0]==0:
+    if existing_agv_table.shape[0] == 0:
         continue
     existing_agv_table['current_x'] = existing_agv_table.apply(
-        lambda x: network1.arc_list[network1.node_arc_dict[(int(x.n0), int(x.n1))]].interpolate_x(x.current_loc),axis=1)
+        lambda x: network1.arc_list[network1.node_arc_dict[(int(x.n0), int(x.n1))]].interpolate_x(x.current_loc),
+        axis=1)
     existing_agv_table['current_y'] = existing_agv_table.apply(
-        lambda x: network1.arc_list[network1.node_arc_dict[(int(x.n0), int(x.n1))]].interpolate_y(x.current_loc),axis=1)
+        lambda x: network1.arc_list[network1.node_arc_dict[(int(x.n0), int(x.n1))]].interpolate_y(x.current_loc),
+        axis=1)
 
     X_record.append(existing_agv_table['current_x'].values)
     Y_record.append(existing_agv_table['current_y'].values)
@@ -190,7 +193,7 @@ for t in range(100, 100 + n_t):
     all_trip.loc[(all_trip['t0'] <= t) & (all_trip['t01'] >= t), 'current_loc'] = 0
     all_trip.loc[all_trip['t1'] <= t, 'current_loc'] = 999
     all_trip.loc[(all_trip['current_loc'] >= 0) & (all_trip['current_loc'] < 100) & (all_trip['t01'] <= t) & (
-                all_trip['t1'] >= t), 'current_loc'] += 1
+            all_trip['t1'] >= t), 'current_loc'] += 1
 
 plt.figure()
 plt.plot(delay_record)
@@ -202,17 +205,23 @@ print('total agvs', agv_index)
 x_max = (network1.n_col - 1) * network1.h_block_length
 y_max = (network1.n_row - 1) * network1.v_block_length
 fig = plt.figure()
-ax = fig.add_subplot(111,autoscale_on = False, xlim=(-1,x_max+1),ylim=(-1,y_max+1))
-agvs, = ax.plot([],[],'bo',ms=10)
+ax = fig.add_subplot(111, autoscale_on=False, xlim=(-1, x_max + 1), ylim=(-1, y_max + 1))
+agvs, = ax.plot([], [], 'bo', ms=10)
+
+
 def init():
-    agvs.set_data([],[])
+    agvs.set_data([], [])
     return agvs
+
+
 def animate(i):
-    agvs.set_data(X_record[i],Y_record[i])
+    agvs.set_data(X_record[i], Y_record[i])
     return agvs
+
+
 anim = animation.FuncAnimation(fig, animate, init_func=init, frames=400, interval=1)
 
 print('saving...')
 plt.rcParams['animation.ffmpeg_path'] = 'C:\\ffmpeg\\bin\\ffmpeg.exe'
 writer = animation.FFMpegWriter()
-anim.save('simulation_basic.mp4',writer=writer)
+anim.save('simulation_basic.mp4', writer=writer)
