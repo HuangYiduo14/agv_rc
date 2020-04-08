@@ -1,3 +1,10 @@
+'''
+Notice: index for time window (reserved or free): [node index] [tw index]
+e.g. (1,2) is the 2nd time window on node 1
+TimeNetwork.reserved_time_window[node index][tw index] = ReservedTimeWindow
+TimeNetwork.free_time_window[node index][tw index] = [start time, end time]
+'''
+
 from network import *
 
 
@@ -81,10 +88,14 @@ class TimeNetwork(Network):
         # reconstruct the path
         u = d
         path = [u]
+        #print('od:',o[0],d[0])
         while (u[0] != o[0]) or (u[1] != o[1]):
+            #print(u[0],u[1])
+            #print(self.free_time_window[u[0]], u[1], u[0])
             v = prev_tw_list[u[0]][u[1]]
             u = v
             path.append(u)
+
         path.reverse()
         travel_time = dist_list[d[0]][d[1]] - enter_time
         # calculate delay
@@ -93,6 +104,7 @@ class TimeNetwork(Network):
         delay = travel_time - optimal_travel_time
         traj = [u[0] for u in path]
         # update time windows
+        f_tw_ind_change = [0 for i in self.node_list]
         prev_r_tw_ind = (-big_M, -big_M)
         for i in range(len(path)):
             u = path[i]  # here u is the free tw node index (node_ind, f_tw_ind)
@@ -111,22 +123,30 @@ class TimeNetwork(Network):
             self.reserved_time_window[u[0]].append(
                 ReservedTimeWindow(u[0], start_time, end_time, tw_type=crossing_type, prev_tw=prev_r_tw_ind))
             this_r_tw_ind = (u[0], len(self.reserved_time_window[u[0]]) - 1)  # keep record of the tw index
+            if i ==0:
+                r_tw_ind_0 = this_r_tw_ind
             # print(this_r_tw_ind)
             if i >= 1:
                 self.reserved_time_window[prev_r_tw_ind[0]][prev_r_tw_ind[1]].next_tw = this_r_tw_ind
             prev_r_tw_ind = this_r_tw_ind
             # update free tw list
-            old_ftw = self.free_time_window[u[0]][u[1]]
+
+            #print(u[0],u[1])
+            ind_tw = u[1]+ f_tw_ind_change[u[0]]
+            old_ftw = self.free_time_window[u[0]][ind_tw]
             if old_ftw[1] - end_time > 1 and start_time - old_ftw[0] > 1:
-                self.free_time_window[u[0]][u[1]] = [end_time, old_ftw[1]]
-                self.free_time_window[u[0]].insert(u[1], [old_ftw[0], start_time])
+                self.free_time_window[u[0]][ind_tw] = [end_time, old_ftw[1]]
+                self.free_time_window[u[0]].insert(ind_tw, [old_ftw[0], start_time])
+                f_tw_ind_change[u[0]] += 1
             elif old_ftw[1] - end_time > 1 and start_time - old_ftw[0] <= 1:
-                self.free_time_window[u[0]][u[1]] = [end_time, old_ftw[1]]
+                self.free_time_window[u[0]][ind_tw] = [end_time, old_ftw[1]]
             elif old_ftw[1] - end_time <= 1 and start_time - old_ftw[0] > 1:
-                self.free_time_window[u[0]][u[1]] = [old_ftw[0], start_time]
+                self.free_time_window[u[0]][ind_tw] = [old_ftw[0], start_time]
             else:
-                self.free_time_window[u[0]].pop(u[1])
-        return traj, travel_time, delay
+                self.free_time_window[u[0]].pop(ind_tw)
+                f_tw_ind_change[u[0]] -= 1
+        #print(self.free_time_window[25])
+        return [traj,r_tw_ind_0], travel_time, delay
 
     def get_prev_node(self, prev_lane, node_ind):
         # find previous node
@@ -174,6 +194,9 @@ class TimeNetwork(Network):
             if len(pq_q) == 0:
                 return False, False, False
             u, label_u = pq_q.popitem()
+            #print(u, label_u)
+            if label_u > big_M//2:
+                return False, False, False
             node_ind = u[0]
             tw_ind = u[1]
             tw0 = self.free_time_window[node_ind][tw_ind]
@@ -181,6 +204,7 @@ class TimeNetwork(Network):
             prev_node = self.get_prev_node(prev_lane, node_ind)
             # if we found the target node
             if u[0] == d:
+                #print('pr')
                 traj, travel_time, delay = self.update_tw(prev_tw_list, prev_lane_list, dist_list, (o, o_tw_ind), u,
                                                           enter_time)
                 return traj, travel_time, delay

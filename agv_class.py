@@ -15,6 +15,7 @@ class AGV:
         self.path = []
 
     def rc_shortest_path_routing(self, network: Network, traj_table: pd.DataFrame):
+        # try to find the shortest path using rc
         # traj_table = pd.DataFrame(temp_list, columns=['time0','time1','node0','node1','agv_ind','occupied'])
         temp_list = network.deterministic_shortest_path(self.start, self.end, time0=0, has_time=True)
         self.path = temp_list[0]
@@ -38,6 +39,31 @@ class AGV:
         travel_time = t - self.enter_time
         delay = travel_time - optimal_travel_time
         return trip_record, travel_time, delay, traj_table
+
+    def tw_routing(self, t_network:TimeNetwork):
+        # try to find shortest path
+        # if there is no tw path available, wait
+        enter_time = self.enter_time
+        while True:
+            info, travel_time, delay = t_network.time_window_routing(self.start,self.end, enter_time)
+            if type(delay)!=bool:
+                break
+            else:
+                enter_time+=1
+        delay += (enter_time - self.enter_time)
+        self.path = info[0]
+        node0 = info[1]
+        trip_record = []
+        for i in range(len(self.path)-1):
+            next_node = t_network.reserved_time_window[node0[0]][node0[1]].next_tw
+            n0 = node0[0]
+            n1 = next_node[0]
+            t0 = t_network.reserved_time_window[node0[0]][node0[1]].start_time + 1
+            t01 = t0
+            t1 = t_network.reserved_time_window[next_node[0]][next_node[1]].start_time + 1
+            trip_record.append([n0, n1, t0, t01, t1])
+            node0 = next_node
+        return trip_record, travel_time, delay
 
     def move(self):
         self.x += self.direction[0]

@@ -1,9 +1,21 @@
 **PhD project: RC AGV for warehouse**
 
-network.py: all classes and basic RC simulation
-util.py: utilities
+util.py: utilities and global variables
 
-Project update:
+node_arc.py: node and arc class
+
+network.py: network class (shortest path alg included)
+
+tw_network.py: time window network class (shortest path alg included)
+
+agv_class.py: AGV class (routing method included)
+
+rc_simulation.py: rc function and simulation function
+
+time_window_routing.py: routing based on time window shortest path
+
+
+**Project update:**
 
 3/24: shortest path online routing + simulation
 
@@ -13,10 +25,10 @@ Project update:
 
 3/31: time-window based model (benchmark 1) (shortest path function)
 
-4/2: time-window based model (shortest path function and other modifications)
+4/2-4/5: time-window based model (shortest path function and other modifications)
 
-4/3: time-window based model (debug)
+4/7: time-window based model (debug)
 
-4/4: pooling problem literature
+4/8: pooling problem literature
 
-4/5: Task management problem literature
+4/9: Task management problem literature

@@ -10,9 +10,34 @@ lp = 2
 p = 0.005  # intensity of flow
 n_t = 500  # simulation time
 alpha = 0.4  # relative demand from station to station
+possible_od = [('half shelf', 'workstation'), ('full shelf', 'workstation'), ('workstation', 'half shelf'),
+               ('workstation', 'full shelf'), ('workstation', 'workstation')]
 
+def simulation_demand():
+    '''
+    pre generate demand
+    :return: demand_time[(possible od type)][time=t][o,d] = True/False
+    '''
+    np.random.seed(10)
+    n_intersect, n_half_shelf, n_full_shelf, n_workstation = get_n_nodes(n_col, n_row)
+    print('start simulation:')
+    print('generating random matrices...')
+    demand_time = {}
+    demand_time[('half shelf', 'workstation')] = np.random.rand(n_t, n_half_shelf, n_workstation) < (p / 2)
+    demand_time[('full shelf', 'workstation')] = np.random.rand(n_t, n_full_shelf, n_workstation) < p
+    demand_time[('workstation', 'half shelf')] = np.random.rand(n_t, n_workstation, n_half_shelf) < (p / 2)
+    demand_time[('workstation', 'full shelf')] = np.random.rand(n_t, n_workstation, n_full_shelf) < p
+    demand_time[('workstation', 'workstation')] = np.random.rand(n_t, n_workstation, n_workstation) < (p * alpha)
+    return demand_time
 
 def demand_transform(demand_list, type1: str, type2: str, network):
+    '''
+    :param demand_list: od matrix
+    :param type1: type of node, e.g. half shelf
+    :param type2: same
+    :param network: Network
+    :return: list of o and d
+    '''
     valid_agv = np.where(demand_list)
     from_node_list = network.node_type_list[type1][valid_agv[0]]
     to_node_list = network.node_type_list[type2][valid_agv[1]]
@@ -20,6 +45,7 @@ def demand_transform(demand_list, type1: str, type2: str, network):
 
 
 def get_n_nodes(n_col, n_row):
+    # get the number of different types of nodes
     n_intersect = n_col * n_row
     n_half_shelf = 2 * (n_row - 1)
     n_full_shelf = (n_col - 2) * (n_row - 1)
@@ -28,6 +54,7 @@ def get_n_nodes(n_col, n_row):
 
 
 def get_node_lists(n_col, n_row):
+    # get the index of different types of nodes
     n_intersect, n_half_shelf, n_full_shelf, n_workstation = get_n_nodes(n_col, n_row)
     intersect_list = list(range(n_intersect))
     half_shelf_list = list(range(n_intersect, n_intersect + n_half_shelf))
