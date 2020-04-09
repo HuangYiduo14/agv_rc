@@ -1,10 +1,10 @@
 from util import *
 from node_arc import *
 import matplotlib.pyplot as plt
-big_M = 99999
-crossing_time = {'straight':2, 'angle':2, 'source':2, 'end':2}
-AGV_length = 1
 
+big_M = 99999
+crossing_time = {'straight': 2, 'angle': 2, 'source': 2, 'end': 2}
+AGV_length = 1
 
 
 class Network:
@@ -127,6 +127,34 @@ class Network:
             print('horizontal/vertical block size cannot be divided by t_hat!')
             return 0.0
         return t_hat
+
+    @staticmethod
+    def route_od_coverage(od: [1, 3], traj: [1, 2, 3]):
+        # to see if a trajectory covers a od demand
+        for ind1, o_node in enumerate(traj):
+            if o_node == od[0]:
+                if ind1 + 1 >= len(traj):
+                    return False
+                for ind2 in range(ind1 + 1, len(traj)):
+                    if traj[ind2] == od[1]:
+                        return True
+                return False
+        return False
+
+    def find_covered_od_demand(self, traj: [1, 2, 3]):
+        '''
+        find all od demand that is covered by trajectory
+        :param traj: list of node index
+        :return: [node_o, node_d, type_o, type_d, index of o in node_type_list[type_o], index of d in node_type_list[type_d]]
+        '''
+        covered_od = []
+        for od_type in possible_od:
+            for ind1, node1 in enumerate(self.node_type_list[od_type[0]]):
+                for ind2, node2 in enumerate(self.node_type_list[od_type[1]]):
+                    if Network.route_od_coverage([node1, node2], traj):
+                        covered_od.append([node1, node2, od_type[0], od_type[1], ind1, ind2])
+        return covered_od
+
 
 def create_network(n_col, n_row, v_block_length, h_block_length=3):
     """

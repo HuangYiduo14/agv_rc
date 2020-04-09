@@ -9,9 +9,34 @@ lp = 2
 # simulation parameters
 p = 0.005  # intensity of flow
 n_t = 500  # simulation time
-alpha = 0.4  # relative demand from station to station
+alpha = 1./4.  # relative demand from station to station
+cycle_length = 10 # length of cycle
 possible_od = [('half shelf', 'workstation'), ('full shelf', 'workstation'), ('workstation', 'half shelf'),
                ('workstation', 'full shelf'), ('workstation', 'workstation')]
+
+def deterministic_demand():
+    # we assume cycle length > 4
+    n_cycles = n_t // cycle_length
+    n_intersect, n_half_shelf, n_full_shelf, n_workstation = get_n_nodes(n_col, n_row)
+    print('setting task list')
+    half_ws = np.zeros((cycle_length, n_half_shelf, n_workstation))
+    half_ws[:2, :, :] = 1
+    full_ws = np.zeros((cycle_length, n_full_shelf, n_workstation))
+    full_ws[:4, :, :] = 1
+    ws_half = np.zeros((cycle_length, n_workstation, n_half_shelf))
+    ws_half[:2, :, :] = 1
+    ws_full = np.zeros((cycle_length, n_workstation, n_full_shelf))
+    ws_full[:4, :, :] = 1
+    ws_ws = np.zeros((cycle_length, n_workstation, n_workstation))
+    ws_ws[:1, :, :] = 1
+    demand_time = dict()
+    demand_time[('half shelf', 'workstation')] = np.tile(half_ws, (n_cycles, 1, 1)) > 0.5
+    demand_time[('full shelf', 'workstation')] = np.tile(full_ws, (n_cycles, 1, 1)) > 0.5
+    demand_time[('workstation', 'half shelf')] = np.tile(ws_half, (n_cycles, 1, 1)) > 0.5
+    demand_time[('workstation', 'full shelf')] = np.tile(ws_full, (n_cycles, 1, 1)) > 0.5
+    demand_time[('workstation', 'workstation')] = np.tile(ws_ws, (n_cycles, 1, 1)) > 0.5
+    return demand_time
+
 
 def simulation_demand():
     '''
@@ -22,13 +47,14 @@ def simulation_demand():
     n_intersect, n_half_shelf, n_full_shelf, n_workstation = get_n_nodes(n_col, n_row)
     print('start simulation:')
     print('generating random matrices...')
-    demand_time = {}
+    demand_time = dict()
     demand_time[('half shelf', 'workstation')] = np.random.rand(n_t, n_half_shelf, n_workstation) < (p / 2)
     demand_time[('full shelf', 'workstation')] = np.random.rand(n_t, n_full_shelf, n_workstation) < p
     demand_time[('workstation', 'half shelf')] = np.random.rand(n_t, n_workstation, n_half_shelf) < (p / 2)
     demand_time[('workstation', 'full shelf')] = np.random.rand(n_t, n_workstation, n_full_shelf) < p
     demand_time[('workstation', 'workstation')] = np.random.rand(n_t, n_workstation, n_workstation) < (p * alpha)
     return demand_time
+
 
 def demand_transform(demand_list, type1: str, type2: str, network):
     '''
@@ -41,7 +67,7 @@ def demand_transform(demand_list, type1: str, type2: str, network):
     valid_agv = np.where(demand_list)
     from_node_list = network.node_type_list[type1][valid_agv[0]]
     to_node_list = network.node_type_list[type2][valid_agv[1]]
-    return from_node_list, to_node_list
+    return np.array(from_node_list), np.array(to_node_list)
 
 
 def get_n_nodes(n_col, n_row):
@@ -181,3 +207,5 @@ class Heapdict(MutableMapping):
     def peekitem(self):
         """D.peekitem() -> (k, v), return the (key, value) pair with lowest value;\n but raise KeyError if D is empty."""
         return (self.heap[0][1], self.heap[0][0])
+
+

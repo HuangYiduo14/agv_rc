@@ -12,7 +12,7 @@ agv_class.py: AGV class (routing method included)
 
 rc_simulation.py: rc function and simulation function
 
-time_window_routing.py: routing based on time window shortest path
+time_window_routing.py: routing based on time window shortest path simulation and rc heuristic
 
 
 **Project update:**
@@ -29,6 +29,9 @@ time_window_routing.py: routing based on time window shortest path
 
 4/7: time-window based model (debug)
 
-4/8: pooling problem literature
+4/9: time-window shortest path rc heuristic + pooling effect
 
-4/9: Task management problem literature
+4/10: Task management problem literature + MIP benchmark
+
+4/11: MIP benchmark
+

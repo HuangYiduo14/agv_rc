@@ -1,6 +1,7 @@
 import pandas as pd
 from tw_network import *
 
+
 class AGV:
     def __init__(self, start, end, x0, y0, enter_time, index, direction=(0, 0), max_v=1, size=1):
         self.size = size
@@ -40,21 +41,21 @@ class AGV:
         delay = travel_time - optimal_travel_time
         return trip_record, travel_time, delay, traj_table
 
-    def tw_routing(self, t_network:TimeNetwork):
+    def tw_routing(self, t_network: TimeNetwork):
         # try to find shortest path
         # if there is no tw path available, wait
         enter_time = self.enter_time
         while True:
-            info, travel_time, delay = t_network.time_window_routing(self.start,self.end, enter_time)
-            if type(delay)!=bool:
+            info, travel_time, delay = t_network.time_window_routing(self.start, self.end, enter_time)
+            if type(delay) != bool:
                 break
             else:
-                enter_time+=1
+                enter_time += 1
         delay += (enter_time - self.enter_time)
         self.path = info[0]
         node0 = info[1]
         trip_record = []
-        for i in range(len(self.path)-1):
+        for i in range(len(self.path) - 1):
             next_node = t_network.reserved_time_window[node0[0]][node0[1]].next_tw
             n0 = node0[0]
             n1 = next_node[0]
@@ -63,7 +64,7 @@ class AGV:
             t1 = t_network.reserved_time_window[next_node[0]][next_node[1]].start_time + 1
             trip_record.append([n0, n1, t0, t01, t1])
             node0 = next_node
-        return trip_record, travel_time, delay
+        return trip_record, travel_time, delay, info[0]
 
     def move(self):
         self.x += self.direction[0]

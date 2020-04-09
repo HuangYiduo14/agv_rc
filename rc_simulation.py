@@ -5,6 +5,13 @@ import pandas as pd
 
 
 def rc_fleet_info(network, t_hat, lp: 1):
+    '''
+    create virtual fleet
+    :param network: Network
+    :param t_hat: rhythme cycle
+    :param lp: platoon size
+    :return: {v agv index: [start node index, end node index, enter time]}
+    '''
     max_sim = 10000
     virtual_fleet = {}
     agv_index = 0
@@ -39,6 +46,7 @@ def rc_fleet_info(network, t_hat, lp: 1):
 
 
 def validate_deterministic_rc(network: Network, t_hat: 0.0, lp: 1):
+    # validate deterministic rc and create virtual fleet trajectories
     def agv_out_bd(network: Network, agv: AGV):
         x_max = (network.n_col - 1) * network.h_block_length
         y_max = (network.n_row - 1) * network.v_block_length
@@ -107,9 +115,12 @@ def validate_deterministic_rc(network: Network, t_hat: 0.0, lp: 1):
     return X_record, Y_record, dir_record
 
 
-def warehouse_simulation(network1, routing_type='rc', traj_table = None, save_anim = False, ani_name ='simulation_basic'):
+def warehouse_simulation(network1, routing_type='rc', traj_table=None, save_anim=False, ani_name='simulation_basic'):
     # simulation experiment
-    demand_time = simulation_demand()
+    if routing_type=='tw_rc_heuristic_gen':
+        demand_time = deterministic_demand()
+    else:
+        demand_time = simulation_demand()
     print('start experiment')
     total_travel_time = 0
     total_delay = 0
@@ -119,41 +130,88 @@ def warehouse_simulation(network1, routing_type='rc', traj_table = None, save_an
     X_record = []
     Y_record = []
     agv_index = 0
-    all_trip = pd.DataFrame(columns=['n0', 'n1', 't0', 't01', 't1', 'agv_ind', 'current_loc','arc_length'])
+    all_trip = pd.DataFrame(columns=['n0', 'n1', 't0', 't01', 't1', 'agv_ind', 'current_loc', 'arc_length'])
     for t in range(100, 100 + n_t):
         print('time:', t, '-' * 50)
         # generate trips
+        del_index = []
+        from_node = np.array([])
+        to_node = np.array([])
+        # get all od demand at time t
         for od in possible_od:
-            from_node, to_node = demand_transform(demand_time[od][t - 100], od[0], od[1], network1)
-            if from_node.shape[0] == 0:
+            from_node_i, to_node_i = demand_transform(demand_time[od][t - 100], od[0], od[1], network1)
+            from_node = np.append(from_node, from_node_i)
+            to_node = np.append(to_node, to_node_i)
+        print(from_node)
+        print(to_node)
+        if routing_type == 'tw_rc_heuristic_gen':
+            # if we are doing time window shortest path heuristic rc, we assign high priority to long travel distance
+            distance = np.array([network1.floyd_warshall_dist[int(from_node[i]), int(to_node[i])] for i in range(len(from_node))])
+            sorted_index = np.argsort(-distance)
+            from_node = from_node[sorted_index]
+            to_node = to_node[sorted_index]
+
+        if from_node.shape[0] == 0:
+            continue
+
+        for i in range(from_node.shape[0]):
+            if i in del_index:
+                # if we have deleted this demand because it is covered by other trips in tw_rc_heuristic_gen
                 continue
-            for i in range(from_node.shape[0]):
-                start = from_node[i]
-                end = to_node[i]
-                if start == end:
-                    continue
-                new_agv = AGV(start, end, network1.node_list[start].x, network1.node_list[start].y, t, agv_index)
-                if routing_type== 'rc':
-                    trip_record, travel_time, delay, traj_table = new_agv.rc_shortest_path_routing(network1, traj_table)
-                else:
-                    trip_record, travel_time, delay = new_agv.tw_routing(network1)
+            start = int(from_node[i])
+            end = int(to_node[i])
+            if start == end:
+                continue
+            new_agv = AGV(start, end, network1.node_list[start].x, network1.node_list[start].y, t, agv_index)
+            if routing_type == 'rc':
+                trip_record, travel_time, delay, traj_table = new_agv.rc_shortest_path_routing(network1, traj_table)
+            else:
+                trip_record, travel_time, delay, traj = new_agv.tw_routing(network1)
 
-                total_travel_time += travel_time
-                total_delay += delay
-                travel_time_record.append(travel_time)
-                delay_record.append(delay)
-                trip_record_i = pd.DataFrame(trip_record, columns=['n0', 'n1', 't0', 't01', 't1'])
-                trip_record_i['agv_ind'] = agv_index
-                trip_record_i['current_loc'] = -1
-                trip_record_i.loc[0, 'current_loc'] = 0
+            total_travel_time += travel_time
+            total_delay += delay
+            travel_time_record.append(travel_time)
+            delay_record.append(delay)
+            trip_record_i = pd.DataFrame(trip_record, columns=['n0', 'n1', 't0', 't01', 't1'])
+            trip_record_i['agv_ind'] = agv_index
+            trip_record_i['current_loc'] = -1
+            trip_record_i.loc[0, 'current_loc'] = 0
 
-                trip_record_i['arc_length'] = trip_record_i.apply(lambda x: network1.arc_list[network1.node_arc_dict[(int(x.n0), int(x.n1))]].length, axis=1)
-                agv_index += 1
-                all_trip = all_trip.append(trip_record_i, ignore_index=True)
+            trip_record_i['arc_length'] = trip_record_i.apply(
+                lambda x: network1.arc_list[network1.node_arc_dict[(int(x.n0), int(x.n1))]].length, axis=1)
+            agv_index += 1
+            all_trip = all_trip.append(trip_record_i, ignore_index=True)
+
+            # if we are trying to find rc using time window based method, we need to update od demand
+            if routing_type == 'tw_rc_heuristic_gen':
+                covered_od_list = network1.find_covered_od_demand(traj)
+                #  [node_o, node_d, type_o, type_d, index of o in node_type_list[type_o], index of d in node_type_list[type_d]]
+                # update demand in the demand list at time t
+                valid_cover_index = []
+                for i in range(len(from_node)):
+                    for j in range(len(covered_od_list)):
+                        if from_node[i] == covered_od_list[j][0] and to_node[i] == covered_od_list[j][1]:
+                            del_index.append(i)
+                        else:
+                            valid_cover_index.append(j)
+                # update future demand
+                for i in valid_cover_index:
+                    t_cycle = (t - 100) % cycle_length
+                    if t_cycle == cycle_length - 1:
+                        break
+                    type_o = covered_od_list[i][2]
+                    type_d = covered_od_list[i][3]
+                    ind_o_type = covered_od_list[i][4]
+                    ind_d_type = covered_od_list[i][5]
+                    for t1 in range(1, cycle_length-t_cycle):
+                        if demand_time[(type_o,type_d)][t1+t][ind_o_type,ind_d_type]:
+                            demand_time[(type_o,type_d)][t1+t][ind_o_type,ind_d_type]=False
+                            break
+
         # keep record of locations
         # print(all_trip)
         existing_agv_table = all_trip.loc[(all_trip['current_loc'] >= 0) & (all_trip['current_loc'] < 100)].copy()
-        #print(existing_agv_table)
+        # print(existing_agv_table)
         if existing_agv_table.shape[0] == 0:
             continue
         existing_agv_table['current_x'] = existing_agv_table.apply(
@@ -168,15 +226,17 @@ def warehouse_simulation(network1, routing_type='rc', traj_table = None, save_an
         # move to next
         all_trip.loc[(all_trip['t0'] <= t) & (all_trip['t01'] >= t), 'current_loc'] = 0
         all_trip.loc[all_trip['t1'] <= t, 'current_loc'] = 999
-        if routing_type== 'rc':
+        if routing_type == 'rc':
             all_trip.loc[(all_trip['current_loc'] >= 0) & (all_trip['current_loc'] < 100) & (all_trip['t01'] <= t) & (
                     all_trip['t1'] >= t), 'current_loc'] += 1
         else:
-            index_of_interest = (all_trip['current_loc'] >= 0) & (all_trip['current_loc'] < 100) & (all_trip['t01'] <= t) & (
-                    all_trip['t1'] >= t)
-            all_trip.loc[index_of_interest, 'current_loc'] = (t - all_trip.loc[index_of_interest,'t01'])/(all_trip.loc[index_of_interest,'t1']-all_trip.loc[index_of_interest,'t01'])
-            all_trip.loc[index_of_interest, 'current_loc'] = all_trip.loc[index_of_interest,'current_loc'] * all_trip.loc[index_of_interest,'arc_length']
-
+            index_of_interest = (all_trip['current_loc'] >= 0) & (all_trip['current_loc'] < 100) & (
+                    all_trip['t01'] <= t) & (
+                                        all_trip['t1'] >= t)
+            all_trip.loc[index_of_interest, 'current_loc'] = (t - all_trip.loc[index_of_interest, 't01']) / (
+                    all_trip.loc[index_of_interest, 't1'] - all_trip.loc[index_of_interest, 't01'])
+            all_trip.loc[index_of_interest, 'current_loc'] = all_trip.loc[index_of_interest, 'current_loc'] * \
+                                                             all_trip.loc[index_of_interest, 'arc_length']
 
     plt.figure()
     plt.plot(delay_record)
@@ -207,7 +267,8 @@ def warehouse_simulation(network1, routing_type='rc', traj_table = None, save_an
         writer = animation.FFMpegWriter()
         anim.save('{0}.mp4'.format(ani_name), writer=writer)
 
-if __name__ =='__main__':
+
+if __name__ == '__main__':
     # create network and find all-point shortest path using Floyd Warshall
     network1 = create_network(n_col, n_row, v_block_length, h_block_length)
     network1.floyd_warshall()
@@ -227,5 +288,4 @@ if __name__ =='__main__':
     traj_table = pd.DataFrame(temp_list, columns=['node0', 'node1', 'time0', 'time1', 'agv_ind', 'occupied'])
     traj_table.sort_values('time0', inplace=True)
     # do simulation
-    warehouse_simulation(network1, type='rc', traj_table=traj_table)
-
+    warehouse_simulation(network1, routing_type='rc', traj_table=traj_table)
