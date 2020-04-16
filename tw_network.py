@@ -11,17 +11,18 @@ from network import *
 class ReservedTimeWindow:
     # tw_type in {first, last, mid}
     def __init__(self, node_i, start_time, end_time, tw_type='source', prev_tw=(-big_M, -big_M),
-                 next_tw=(-big_M, -big_M)):
+                 next_tw=(-big_M, -big_M), agv_id = 0):
         self.node_i = node_i
         self.start_time = start_time
         self.end_time = end_time
         self.tw_type = tw_type
         self.prev_tw = prev_tw
         self.next_tw = next_tw
+        self.agv_id = agv_id
 
 
 class TimeNetwork(Network):
-    def __init__(self, network: Network, time_span=1000, bidirect=True):
+    def __init__(self, network: Network, time_span=n_t*100, bidirect=True):
         Network.__init__(self, network.node_list, network.arc_list, network.n_col, network.n_row,
                          network.v_block_length,
                          network.h_block_length)
@@ -83,7 +84,7 @@ class TimeNetwork(Network):
 
             return tau_ji, lambda_ji, alpha_ji
 
-    def update_tw(self, prev_tw_list, prev_lane_list, dist_list, o: (1, 1), d: (1, 1), enter_time):
+    def update_tw(self, prev_tw_list, prev_lane_list, dist_list, o: (1, 1), d: (1, 1), enter_time, agv_id):
         # index of tw: (ind_node,ind_tw), e.g. o[0] is the node index of o, o[1] is the tw index of o
         # reconstruct the path
         u = d
@@ -121,7 +122,7 @@ class TimeNetwork(Network):
             end_time = start_time + crossing_time[crossing_type]
             # update reserved tw list
             self.reserved_time_window[u[0]].append(
-                ReservedTimeWindow(u[0], start_time, end_time, tw_type=crossing_type, prev_tw=prev_r_tw_ind))
+                ReservedTimeWindow(u[0], start_time, end_time, tw_type=crossing_type, prev_tw=prev_r_tw_ind, agv_id=agv_id))
             this_r_tw_ind = (u[0], len(self.reserved_time_window[u[0]]) - 1)  # keep record of the tw index
             if i == 0:
                 r_tw_ind_0 = this_r_tw_ind
@@ -157,7 +158,7 @@ class TimeNetwork(Network):
             prev_node = prev_lane[0]
         return prev_node
 
-    def time_window_routing(self, o, d, enter_time):
+    def time_window_routing(self, o, d, enter_time, agv_id):
         # Shortest path algorithm for time window network
         # sort free time window
         for node_ind in range(len(self.node_list)):
@@ -172,6 +173,7 @@ class TimeNetwork(Network):
                 o_tw_t0 = f_tw[0]
                 break
         if o_tw_t0 >= big_M:  # if there is no time window possible, then reject this demand
+            print('no initial time window')
             return False, False, False
         actual_enter_time = max(enter_time, o_tw_t0)
         # initialize list
@@ -190,12 +192,14 @@ class TimeNetwork(Network):
         dist_list[o][o_tw_ind] = actual_enter_time
         pq_q[(o, o_tw_ind)] = actual_enter_time
         # apply Dijkstra algorithm
-        for loop in range(10000):
+        for loop in range(100000):
             if len(pq_q) == 0:
+                print('queue empty, no available route')
                 return False, False, False
             u, label_u = pq_q.popitem()
             # print(u, label_u)
             if label_u > big_M // 2:
+                print('valid queue emtpy, no available route')
                 return False, False, False
             node_ind = u[0]
             tw_ind = u[1]
@@ -206,7 +210,7 @@ class TimeNetwork(Network):
             if u[0] == d:
                 # print('pr')
                 traj, travel_time, delay = self.update_tw(prev_tw_list, prev_lane_list, dist_list, (o, o_tw_ind), u,
-                                                          enter_time)
+                                                          enter_time, agv_id)
                 return traj, travel_time, delay
             neighbor_u_node = np.where(self.dist_matrix[node_ind] < big_M // 2)
             for node_ind1 in neighbor_u_node[0]:
@@ -219,4 +223,5 @@ class TimeNetwork(Network):
                         prev_lane_list[node_ind1][tw_ind1] = lambda_ji
                         prev_tw_list[node_ind1][tw_ind1] = (node_ind, tw_ind)
                         pq_q[(node_ind1, tw_ind1)] = tau_ji
+        print('max iter, no available route')
         return False, False, False

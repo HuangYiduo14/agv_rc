@@ -7,8 +7,8 @@ n_col = 4
 n_row = 4
 lp = 2
 # simulation parameters
-p = 0.005  # intensity of flow
-n_t = 500  # simulation time
+prob = 0.01  # intensity of flow
+n_t = 1000  # simulation time
 alpha = 1./4.  # relative demand from station to station
 cycle_length = 10 # length of cycle
 possible_od = [('half shelf', 'workstation'), ('full shelf', 'workstation'), ('workstation', 'half shelf'),
@@ -38,7 +38,7 @@ def deterministic_demand():
     return demand_time
 
 
-def simulation_demand():
+def simulation_demand(p=prob):
     '''
     pre generate demand
     :return: demand_time[(possible od type)][time=t][o,d] = True/False

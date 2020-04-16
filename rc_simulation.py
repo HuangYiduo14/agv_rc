@@ -3,7 +3,6 @@ from agv_class import *
 from matplotlib import animation
 import pandas as pd
 
-
 def rc_fleet_info(network, t_hat, lp: 1):
     '''
     create virtual fleet
@@ -115,12 +114,14 @@ def validate_deterministic_rc(network: Network, t_hat: 0.0, lp: 1):
     return X_record, Y_record, dir_record
 
 
-def warehouse_simulation(network1, routing_type='rc', traj_table=None, save_anim=False, ani_name='simulation_basic'):
+def warehouse_simulation(network1, routing_type='rc', traj_table=None, save_anim=False, ani_name='simulation_basic',p=prob):
     # simulation experiment
+
+
     if routing_type=='tw_rc_heuristic_gen':
         demand_time = deterministic_demand()
     else:
-        demand_time = simulation_demand()
+        demand_time = simulation_demand(p)
     print('start experiment')
     total_travel_time = 0
     total_delay = 0
@@ -132,7 +133,7 @@ def warehouse_simulation(network1, routing_type='rc', traj_table=None, save_anim
     agv_index = 0
     all_trip = pd.DataFrame(columns=['n0', 'n1', 't0', 't01', 't1', 'agv_ind', 'current_loc', 'arc_length'])
     for t in range(100, 100 + n_t):
-        print('time:', t, '-' * 50)
+        print('time:', t)
         # generate trips
         del_index = []
         from_node = np.array([])
@@ -142,17 +143,14 @@ def warehouse_simulation(network1, routing_type='rc', traj_table=None, save_anim
             from_node_i, to_node_i = demand_transform(demand_time[od][t - 100], od[0], od[1], network1)
             from_node = np.append(from_node, from_node_i)
             to_node = np.append(to_node, to_node_i)
-        print(from_node)
-        print(to_node)
+        #print('fron_node',from_node)
+        #print('to_node',to_node)
         if routing_type == 'tw_rc_heuristic_gen':
             # if we are doing time window shortest path heuristic rc, we assign high priority to long travel distance
             distance = np.array([network1.floyd_warshall_dist[int(from_node[i]), int(to_node[i])] for i in range(len(from_node))])
             sorted_index = np.argsort(-distance)
             from_node = from_node[sorted_index]
             to_node = to_node[sorted_index]
-
-        if from_node.shape[0] == 0:
-            continue
 
         for i in range(from_node.shape[0]):
             if i in del_index:
@@ -210,62 +208,69 @@ def warehouse_simulation(network1, routing_type='rc', traj_table=None, save_anim
 
         # keep record of locations
         # print(all_trip)
-        existing_agv_table = all_trip.loc[(all_trip['current_loc'] >= 0) & (all_trip['current_loc'] < 100)].copy()
-        # print(existing_agv_table)
-        if existing_agv_table.shape[0] == 0:
-            continue
-        existing_agv_table['current_x'] = existing_agv_table.apply(
-            lambda x: network1.arc_list[network1.node_arc_dict[(int(x.n0), int(x.n1))]].interpolate_x(x.current_loc),
-            axis=1)
-        existing_agv_table['current_y'] = existing_agv_table.apply(
-            lambda x: network1.arc_list[network1.node_arc_dict[(int(x.n0), int(x.n1))]].interpolate_y(x.current_loc),
-            axis=1)
+        if save_anim:
+            existing_agv_table = all_trip.loc[(all_trip['current_loc'] >= 0) & (all_trip['current_loc'] < 100)].copy()
+            #print('existing_table:')
+            #print(existing_agv_table)
 
-        X_record.append(existing_agv_table['current_x'].values)
-        Y_record.append(existing_agv_table['current_y'].values)
-        # move to next
-        all_trip.loc[(all_trip['t0'] <= t) & (all_trip['t01'] >= t), 'current_loc'] = 0
-        all_trip.loc[all_trip['t1'] <= t, 'current_loc'] = 999
-        if routing_type == 'rc':
-            all_trip.loc[(all_trip['current_loc'] >= 0) & (all_trip['current_loc'] < 100) & (all_trip['t01'] <= t) & (
-                    all_trip['t1'] >= t), 'current_loc'] += 1
-        else:
-            index_of_interest = (all_trip['current_loc'] >= 0) & (all_trip['current_loc'] < 100) & (
-                    all_trip['t01'] <= t) & (
-                                        all_trip['t1'] >= t)
-            all_trip.loc[index_of_interest, 'current_loc'] = (t - all_trip.loc[index_of_interest, 't01']) / (
-                    all_trip.loc[index_of_interest, 't1'] - all_trip.loc[index_of_interest, 't01'])
-            all_trip.loc[index_of_interest, 'current_loc'] = all_trip.loc[index_of_interest, 'current_loc'] * \
-                                                             all_trip.loc[index_of_interest, 'arc_length']
+            if existing_agv_table.shape[0] == 0:
+                continue
+            existing_agv_table['current_x'] = existing_agv_table.apply(
+                lambda x: network1.arc_list[network1.node_arc_dict[(int(x.n0), int(x.n1))]].interpolate_x(
+                    x.current_loc),
+                axis=1)
+            existing_agv_table['current_y'] = existing_agv_table.apply(
+                lambda x: network1.arc_list[network1.node_arc_dict[(int(x.n0), int(x.n1))]].interpolate_y(
+                    x.current_loc),
+                axis=1)
+
+            X_record.append(existing_agv_table['current_x'].values)
+            Y_record.append(existing_agv_table['current_y'].values)
+            # move to next
+            all_trip.loc[(all_trip['t0'] <= t) & (all_trip['t01'] >= t), 'current_loc'] = 0
+            all_trip.loc[all_trip['t1'] <= t, 'current_loc'] = 999
+            if routing_type == 'rc':
+                all_trip.loc[
+                    (all_trip['current_loc'] >= 0) & (all_trip['current_loc'] < 100) & (all_trip['t01'] <= t) & (
+                            all_trip['t1'] >= t), 'current_loc'] += 1.
+            else:
+                index_of_interest = (all_trip['t01'] <= t) & (all_trip['t1'] >= t)
+                all_trip.loc[index_of_interest, 'current_loc'] = 1. * (t - all_trip.loc[index_of_interest, 't01']) / (
+                        all_trip.loc[index_of_interest, 't1'] - all_trip.loc[index_of_interest, 't01'])
+                all_trip.loc[index_of_interest, 'current_loc'] = all_trip.loc[index_of_interest, 'current_loc'] * \
+                                                                 all_trip.loc[index_of_interest, 'arc_length']
 
     plt.figure()
     plt.plot(delay_record)
+    plt.xlabel('agv_index')
+    plt.ylabel('delay')
+    plt.title('{0},p={1},t={2}'.format(routing_type,p,n_t))
+    plt.savefig('expfig/{0},p={1},t={2}.png'.format(routing_type,p,n_t))
+    print('prob',p)
     print('total delay', total_delay)
     print('total travel time', total_travel_time)
     print('total agvs', agv_index)
 
-    # animation
-    x_max = (network1.n_col - 1) * network1.h_block_length
-    y_max = (network1.n_row - 1) * network1.v_block_length
-    fig = plt.figure()
-    ax = fig.add_subplot(111, autoscale_on=False, xlim=(-1, x_max + 1), ylim=(-1, y_max + 1))
-    agvs, = ax.plot([], [], 'bo', ms=10)
 
     def init():
         agvs.set_data([], [])
         return agvs
-
     def animate(i):
         agvs.set_data(X_record[i], Y_record[i])
         return agvs
-
-    anim = animation.FuncAnimation(fig, animate, init_func=init, frames=200, interval=1)
-
     if save_anim:
+        # animation
+        x_max = (network1.n_col - 1) * network1.h_block_length
+        y_max = (network1.n_row - 1) * network1.v_block_length
+        fig = plt.figure()
+        ax = fig.add_subplot(111, autoscale_on=False, xlim=(-1, x_max + 1), ylim=(-1, y_max + 1))
+        agvs, = ax.plot([], [], 'bo', ms=10)
+        anim = animation.FuncAnimation(fig, animate, init_func=init, frames=n_t - 50, interval=1)
         print('saving...')
         plt.rcParams['animation.ffmpeg_path'] = 'C:\\ffmpeg\\bin\\ffmpeg.exe'
         writer = animation.FFMpegWriter()
         anim.save('{0}.mp4'.format(ani_name), writer=writer)
+    return total_delay, total_travel_time, agv_index
 
 
 if __name__ == '__main__':
@@ -288,4 +293,21 @@ if __name__ == '__main__':
     traj_table = pd.DataFrame(temp_list, columns=['node0', 'node1', 'time0', 'time1', 'agv_ind', 'occupied'])
     traj_table.sort_values('time0', inplace=True)
     # do simulation
-    warehouse_simulation(network1, routing_type='rc', traj_table=traj_table)
+    simulation_record = pd.DataFrame(columns=['prob','total_delay','total_travel_time','agv_number'])
+    #p_list = [0.0025, 0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02]
+    #p_list = [0.013, 0.0135, 0.014, 0.0145, 0.015]
+    p_list = [0.003,0.0035, 0.004]
+    for i, p in enumerate(p_list):
+        print('rc routing', p, '=' * 50)
+        temp_table = traj_table.copy()
+        total_delay, total_travel_time, agv_index= warehouse_simulation(network1, routing_type='rc',traj_table=temp_table, p=p)
+        simulation_result = pd.DataFrame({'prob':p,'total_delay':[total_delay], 'total_travel_time':[total_travel_time],'agv_number':[agv_index]})
+        simulation_record = simulation_record.append(simulation_result, ignore_index=True)
+    simulation_record.to_csv('expdata/exp_rc2.csv')
+'''
+result
+total delay 8701.0
+total travel time 32809.0
+total agvs 565
+saving...
+'''

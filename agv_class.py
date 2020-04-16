@@ -46,11 +46,13 @@ class AGV:
         # if there is no tw path available, wait
         enter_time = self.enter_time
         while True:
-            info, travel_time, delay = t_network.time_window_routing(self.start, self.end, enter_time)
+            info, travel_time, delay = t_network.time_window_routing(self.start, self.end, enter_time ,self.index)
             if type(delay) != bool:
                 break
             else:
+                print('holding at the origin node')
                 enter_time += 1
+                print(enter_time)
         delay += (enter_time - self.enter_time)
         self.path = info[0]
         node0 = info[1]
